@@ -35,6 +35,11 @@ SUPPORTED_BOARDS = {
     "nrf52840_dongle": "third_party/tock/boards/nordic/nrf52840_dongle"
 }
 
+# Maps board names as used by this script to OpenOCD board names.
+OPENOCD_BOARDS = {
+    "nrf52840_dk": "nrf52dk"
+}
+
 # The STACK_SIZE value below must match the one used in the linker script
 # used by the board.
 # e.g. for Nordic nRF52840 boards the file is `nrf52840dk_layout.ld`.
@@ -136,10 +141,14 @@ class OpenSKInstaller:
         port=None,
     )
 
-  def checked_command_output(self, cmd):
+  # env_vars is a set of environment variables to pass to the subprocess.
+  # Variables not in env_vars are inherited from deploy.sh's environment.
+  def checked_command_output(self, cmd, env_vars={}):
+    env = os.environ
+    env.update(env_vars)
     cmd_output = ""
     try:
-      cmd_output = subprocess.check_output(cmd)
+      cmd_output = subprocess.check_output(cmd, env=env)
     except subprocess.CalledProcessError as e:
       fatal("Failed to execute {}: {}".format(cmd[0], str(e)))
       # Unreachable because fatal() will exit
@@ -168,8 +177,14 @@ class OpenSKInstaller:
     info("Rust toolchain up-to-date")
 
   def build_and_install_tockos(self):
+    env_vars = {}
+    if self.args.programmer_type == "openocd":
+      env_vars["TOCKLOADER_JTAG_FLAGS"] = (
+          '--board="{}" --openocd --openocd-cmd="{}"'
+          .format(OPENOCD_BOARDS[self.args.board], self.args.programmer_bin))
+    print(env_vars)
     self.checked_command_output(
-        ["make", "-C", SUPPORTED_BOARDS[self.args.board], "flash"])
+        ["make", "-C", SUPPORTED_BOARDS[self.args.board], "flash"], env_vars)
 
   def build_and_install_example(self):
     assert self.args.application
@@ -314,10 +329,18 @@ class OpenSKInstaller:
 def main(args):
   # Make sure the current working directory is the right one before running
   os.chdir(os.path.realpath(os.path.dirname(__file__)))
-  # Check for pre-requisite executable files.
-  if not shutil.which("JLinkExe"):
-    fatal(("Couldn't find JLinkExe binary. Make sure Segger JLink tools "
-           "are installed and correctly set up."))
+
+  # Identify the binary to use to program the board. This will not try to guess
+  # whether the user wants to use JLink tools or OpenOCD -- instead, if it
+  # fails to find the expected binary it prints an error message.
+  if args.programmer_bin is None:
+    if args.programmer_type == "jlink":
+      args.programmer_bin = shutil.which("JLinkExe")
+    elif args.programmer_type == "openocd":
+      args.programmer_bin = shutil.which("openocd")
+  if args.programmer_bin is None:
+    fatal(("Unable to find programmer binary. To use Segger JLink tools, pass "
+           "--jlink. To use OpenOCD, pass --openocd."))
 
   OpenSKInstaller(args).run()
 
@@ -331,6 +354,28 @@ if __name__ == '__main__':
       dest="clear_apps",
       help=("When installing an application, previously installed "
             "applications won't be erased from the board."),
+  )
+  programmer_group = shared_parser.add_mutually_exclusive_group()
+  programmer_group.add_argument(
+      "--jlink",
+      dest="programmer_type",
+      action="store_const",
+      const="jlink",
+      help="Use Segger JLink tools (JLinkExe) to program the target board.",
+  )
+  programmer_group.add_argument(
+      "--openocd",
+      dest="programmer_type",
+      action="store_const",
+      const="openocd",
+      help="Use OpenOCD to program the target board.",
+  )
+  programmer_group.set_defaults(programmer_type="jlink")
+  shared_parser.add_argument(
+      "--programmer_bin",
+      metavar="PROGRAMMER_BIN",
+      dest="programmer_bin",
+      help="The path to the programmer to use (e.g. JLinkExe or openocd)",
   )
 
   main_parser = argparse.ArgumentParser()
