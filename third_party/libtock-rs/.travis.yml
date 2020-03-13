@@ -1,0 +1,18 @@
+language: rust
+rust:
+  - nightly-2019-09-19
+
+os:
+  - linux
+  - osx
+
+cache: rust
+
+install:
+  - rustup target add thumbv7em-none-eabi
+  - rustup component add rustfmt-preview
+
+script:
+  - cargo fmt --all -- --check
+  - cargo test --lib
+  - ./build_examples.sh
