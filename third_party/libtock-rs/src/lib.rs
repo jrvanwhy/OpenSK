@@ -12,22 +12,22 @@ extern crate alloc;
 
 mod callback;
 
-pub mod adc;
-pub mod ble_composer;
-pub mod ble_parser;
+//pub mod adc;
+//pub mod ble_composer;
+//pub mod ble_parser;
 pub mod buttons;
 pub mod console;
 pub mod debug;
-pub mod electronics;
-pub mod gpio;
+//pub mod electronics;
+//pub mod gpio;
 pub mod led;
 pub mod memop;
 pub mod result;
 pub mod rng;
-pub mod sensors;
+//pub mod sensors;
 pub mod shared_memory;
-pub mod simple_ble;
-pub mod temperature;
+//pub mod simple_ble;
+//pub mod temperature;
 pub mod timer;
 pub mod unwind_symbols;
 
@@ -40,10 +40,10 @@ mod lang_items;
 #[cfg(any(target_arch = "arm", target_arch = "riscv32"))]
 pub mod syscalls;
 
-#[cfg(not(any(target_arch = "arm", target_arch = "riscv32")))]
-#[path = "syscalls_mock.rs"]
-pub mod syscalls;
+//#[cfg(not(any(target_arch = "arm", target_arch = "riscv32")))]
+//#[path = "syscalls_mock.rs"]
+//pub mod syscalls;
 
 // Dummy structure to force importing the panic_handler and other no_std elements when nothing else
 // is imported.
-pub struct LibTock;
+//pub struct LibTock;
