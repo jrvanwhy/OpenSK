@@ -42,25 +42,30 @@ impl<CL: ClientLink> Rng<CL> {
     }
 
     pub fn fetch(&'static self, buffer: &'static mut [u8]) -> Result<(), (Error, &'static mut [u8])> {
-        if !self.buffer_data.is_null() { return Err((Error::EBUSY, buffer)); }
-        match crate::syscalls::allow_ptr(DRIVER_NUM, BUFFER_NUM, buffer.as_mut_ptr(), buffer.len()) {
-            0 => {},  // Success
-            -10 => return Err((Error::ENOSUPPORT, buffer)),
-            _ => return Err((Error::FAIL, buffer)),
-        }
-        match crate::syscalls::subscribe_ptr(DRIVER_NUM, GET_BYTES_DONE,
-                                             callback::<CL> as *const _,
-                                             self as *const Self as usize) {
-            0 => {},  // Success
-            _ => {
-                // Open question: do we need to check this for failure, and if
-                // it fails, what do we do? panic? Poison the RNG?
-                crate::syscalls::allow_ptr(DRIVER_NUM, BUFFER_NUM, core::ptr::null_mut(), 0);
-                return Err((Error::FAIL, buffer));
-            },
-        }
-        //match crate::syscalls::command(DRIVER_NUM, GET_BYTES, buffer.len())
+        //if !self.buffer_data.is_null() { return Err((Error::EBUSY, buffer)); }
+        //match crate::syscalls::allow_ptr(DRIVER_NUM, BUFFER_NUM, buffer.as_mut_ptr(), buffer.len()) {
+        //	0 => {},  // Success
+        //	-10 => return Err((Error::ENOSUPPORT, buffer)),
+        //	_ => return Err((Error::FAIL, buffer)),
+        //}
+        //match crate::syscalls::subscribe_ptr(DRIVER_NUM, GET_BYTES_DONE,
+        //                                     callback::<CL> as *const _,
+        //                                     self as *const Self as usize) {
+        //	0 => {},  // Success
+        //	_ => {
+        //		// Open question: do we need to check this for failure, and if
+        //		// it fails, what do we do? panic? Poison the RNG?
+        //		crate::syscalls::allow_ptr(DRIVER_NUM, BUFFER_NUM, core::ptr::null_mut(), 0);
+        //		return Err((Error::FAIL, buffer));
+        //	},
+        //}
+        ////match crate::syscalls::command(DRIVER_NUM, GET_BYTES, buffer.len())
+        unimplemented!()  // TODO
     }
+}
+
+pub fn fill_buffer(_buffer: &mut [u8]) {
+    // TODO: remove
 }
 
 /// Error type for the RNG driver.
