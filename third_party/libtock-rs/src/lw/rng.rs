@@ -39,7 +39,7 @@ impl<F: Forwarder<Option<Buffer>>> Rng<F> {
         match unsafe { subscribe_ptr(DRIVER_NUM, GET_BYTES_DONE, callback::<F> as *const _,
                                      self as *const Self as usize) } {
             0 => {},  // Success
-            -10 => return Err((FetchError::ENOSUPPORT, Some(buffer))),
+            -11 => return Err((FetchError::ENODEVICE, Some(buffer))),
             _ => return Err((FetchError::FAIL, Some(buffer))),
         }
         if unsafe { allow_ptr(DRIVER_NUM, BUFFER_NUM, buffer.as_mut_ptr(), buffer.len()) } != 0 {
@@ -49,8 +49,8 @@ impl<F: Forwarder<Option<Buffer>>> Rng<F> {
             // Unable to start the fetch, but we've already allow()-ed the
             // buffer to the kernel. Try to get it back.
             return match unsafe { allow_ptr(DRIVER_NUM, BUFFER_NUM, null_mut(), 0) } {
-                0 => return Err((FetchError::FAIL, Some(buffer))),
-                _ => return Err((FetchError::FAIL, None)),
+                0 => Err((FetchError::FAIL, Some(buffer))),
+                _ => Err((FetchError::FAIL, None)),
             }
         }
         self.buffer_data.set(buffer.as_mut_ptr());
@@ -65,9 +65,9 @@ pub fn fill_buffer(_buffer: &mut [u8]) {
 
 /// Error type for the RNG driver.
 pub enum FetchError {
-    FAIL = -1,         // Internal failure
-    EBUSY = -2,        // A fetch is ongoing.
-    ENOSUPPORT = -10,  // The kernel does not have the RNG capsule.
+    FAIL = -1,        // Internal failure
+    EBUSY = -2,       // A fetch is ongoing.
+    ENODEVICE = -11,  // The kernel does not have the RNG capsule.
 }
 
 // We don't use crate::syscalls::subscribe as that requires a unique reference
