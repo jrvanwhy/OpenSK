@@ -16,7 +16,7 @@ pub struct Led<I: LedIdx> {
 }
 
 impl<I: LedIdx> Led<I> {
-    pub fn new() -> Led<I> {
+    pub const fn new() -> Led<I> {
         Led { _phantom: core::marker::PhantomData }
     }
 

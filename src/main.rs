@@ -42,7 +42,7 @@ use libtock::buttons;
 use libtock::buttons::ButtonState;
 #[cfg(feature = "debug_ctap")]
 use libtock::console::Console;
-use libtock::led;
+use libtock::lw::led;
 use libtock::result::TockValue;
 use libtock::syscalls;
 use libtock::timer;
@@ -264,13 +264,27 @@ fn send_keepalive_up_needed(
     Ok(())
 }
 
+struct Led0; impl led::LedIdx for Led0 { const IDX: usize = 0; }
+struct Led1; impl led::LedIdx for Led1 { const IDX: usize = 1; }
+struct Led2; impl led::LedIdx for Led2 { const IDX: usize = 2; }
+struct Led3; impl led::LedIdx for Led3 { const IDX: usize = 3; }
+
+static LED0: led::Led<Led0> = led::Led::new();
+static LED1: led::Led<Led1> = led::Led::new();
+static LED2: led::Led<Led2> = led::Led::new();
+static LED3: led::Led<Led3> = led::Led::new();
+
 fn blink_leds(pattern_seed: isize) {
-    for l in 0..led::count() {
-        if (pattern_seed ^ l).count_ones() & 1 != 0 {
-            led::get(l).unwrap().on();
-        } else {
-            led::get(l).unwrap().off();
-        }
+    if pattern_seed.count_ones() & 1 != 0 {
+        let _ = LED0.turn_on();
+        let _ = LED1.turn_on();
+        let _ = LED2.turn_on();
+        let _ = LED3.turn_on();
+    } else {
+        let _ = LED0.turn_off();
+        let _ = LED1.turn_off();
+        let _ = LED2.turn_off();
+        let _ = LED3.turn_off();
     }
 }
 
@@ -287,12 +301,13 @@ fn wink_leds(pattern_seed: isize) {
     // *     *
     // * *   *
     // * *
-    let count = led::count();
+    let count = 4;
     let a = (pattern_seed / 2) % count;
     let b = ((pattern_seed + 1) / 2) % count;
     let c = ((pattern_seed + 3) / 2) % count;
 
-    for l in 0..count {
+    let mut leds = [false; 4];
+    for l in 0..4 {
         // On nRF52840-DK, logically swap LEDs 3 and 4 so that the order of LEDs form a circle.
         let k = match l {
             2 => 3,
@@ -300,17 +315,22 @@ fn wink_leds(pattern_seed: isize) {
             _ => l,
         };
         if k == a || k == b || k == c {
-            led::get(l).unwrap().on();
+            leds[k as usize] = true;
         } else {
-            led::get(l).unwrap().off();
+            leds[k as usize] = false;
         }
     }
+    let _ = if leds[0] { LED0.turn_on() } else { LED0.turn_off() };
+    let _ = if leds[1] { LED1.turn_on() } else { LED1.turn_off() };
+    let _ = if leds[2] { LED2.turn_on() } else { LED2.turn_off() };
+    let _ = if leds[3] { LED3.turn_on() } else { LED3.turn_off() };
 }
 
 fn switch_off_leds() {
-    for l in 0..led::count() {
-        led::get(l).unwrap().off();
-    }
+    let _ = LED0.turn_off();
+    let _ = LED1.turn_off();
+    let _ = LED2.turn_off();
+    let _ = LED3.turn_off();
 }
 
 fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
