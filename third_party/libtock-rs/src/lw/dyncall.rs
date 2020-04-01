@@ -10,7 +10,7 @@ use core::num::NonZeroUsize;
 
 /// Represents a method on a type. This is intentionally similar to the Fn trait
 /// (which is unstable).
-trait Callable<Args, Return>: Sized {
+pub trait Callable<Args, Return>: Sized {
     fn call(&self, args: Args) -> Return;
 
     /// Type-erased version of call, for use by DynCall. Safety: safe to call
@@ -23,7 +23,7 @@ trait Callable<Args, Return>: Sized {
 
 /// Lighter-weight version of `&dyn Callable<Args, Return>` that inlines the
 /// function pointer directly rather than indirecting through a vtable.
-struct DynCall<Args, Return> {
+pub struct DynCall<Args, Return> {
     data: NonZeroUsize,
     function: unsafe fn(NonZeroUsize, Args) -> Return,
 }

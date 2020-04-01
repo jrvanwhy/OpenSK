@@ -1,6 +1,7 @@
 #![feature(
     asm,
     alloc_error_handler,
+    const_fn,
     core_intrinsics,
     lang_items,
     naked_functions,
@@ -19,6 +20,7 @@ pub mod buttons;
 pub mod console;
 pub mod debug;
 //pub mod electronics;
+pub mod futures;
 //pub mod gpio;
 pub mod led;
 pub mod lw;

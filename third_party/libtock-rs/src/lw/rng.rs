@@ -30,8 +30,8 @@ pub struct Rng<F: Forwarder<Option<Buffer>>> {
 }
 
 impl<F: Forwarder<Option<Buffer>>> Rng<F> {
-    pub fn new(forwarder: F) -> Rng<F> {
-        Rng { buffer_data: Cell::new(null_mut()), buffer_len: Default::default(), forwarder }
+    pub const fn new(forwarder: F) -> Rng<F> {
+        Rng { buffer_data: Cell::new(null_mut()), buffer_len: Cell::new(0), forwarder }
     }
 
     pub fn fetch(&'static self, buffer: Buffer) -> Result<(), (FetchError, Option<Buffer>)> {
@@ -59,11 +59,10 @@ impl<F: Forwarder<Option<Buffer>>> Rng<F> {
     }
 }
 
-pub fn fill_buffer(_buffer: &mut [u8]) {
-    // TODO: remove
-}
-
 /// Error type for the RNG driver.
+// TODO: These are just the kernel-provided error types. For low-level drivers
+// that "have no failure modes of their own", should we just have a common error
+// type?
 pub enum FetchError {
     FAIL = -1,        // Internal failure
     EBUSY = -2,       // A fetch is ongoing.

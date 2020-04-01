@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use libtock::lw::rng;
+use libtock::futures::rng;
 
 // Lightweight RNG trait to generate uniformly distributed 256 bits.
 pub trait Rng256 {
@@ -41,9 +41,16 @@ pub struct TockRng256 {}
 
 impl Rng256 for TockRng256 {
     fn gen_uniform_u8x32(&mut self) -> [u8; 32] {
-        let mut buf: [u8; 32] = [Default::default(); 32];
-        rng::fill_buffer(&mut buf);
-        buf
+        use core::convert::TryInto;
+        use libtock::futures::executor::block_on;
+        use libtock::lw::async_util::StaticMutCell;
+        static BUFFER: StaticMutCell<[u8; 32]> = StaticMutCell::new([0; 32]);
+        let buffer: &mut [u8; 32] = block_on(
+            rng::RngFuture::new(BUFFER.get().expect("RNG failed")).expect("RNG failed"))
+            .expect("RNG failed").try_into().expect("RNG buffer len");
+        let out = *buffer;
+        BUFFER.unborrow(buffer);
+        out
     }
 }
 
