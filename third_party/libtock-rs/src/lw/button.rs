@@ -13,6 +13,7 @@ const DISABLE_INTERRUPT: usize = 2;
 const GET_STATE: usize = 3;
 const BUTTON_EVENT: usize = 0;
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct Event {
     pub index: usize,
     pub new_value: bool,
