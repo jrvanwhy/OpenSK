@@ -1,5 +1,6 @@
 pub mod async_util;
 pub mod button;
+pub mod console;
 pub mod deferred;
 pub mod dyncall;
 pub mod led;
