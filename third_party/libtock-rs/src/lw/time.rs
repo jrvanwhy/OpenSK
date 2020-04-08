@@ -65,6 +65,11 @@ impl<F: Forwarder<AlarmFired>> Clock<F> {
         )
     }
 
+    // Returns u64::max_value() if no alarm is set.
+    pub fn get_alarm(&self) -> u64 {
+        self.client_setpoint.get()
+    }
+
     pub fn set_alarm(&self, time: u64) -> Result<(), InPast> {
         self.client_setpoint.set(time);
         if time >= self.last_callback.get() + UPDATE_PERIOD as u64 {
