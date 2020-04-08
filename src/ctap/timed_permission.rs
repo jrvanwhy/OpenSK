@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::timer::{ClockValue, Duration};
-
 #[derive(Clone, Copy, Debug)]
 pub enum TimedPermission {
     Waiting,
-    Granted(ClockValue),
+    Granted(u64),
 }
 
 impl TimedPermission {
@@ -25,28 +23,26 @@ impl TimedPermission {
         TimedPermission::Waiting
     }
 
-    pub fn granted(now: ClockValue, grant_duration: Duration<isize>) -> TimedPermission {
+    pub fn granted(now: u64, grant_duration: u64) -> TimedPermission {
         TimedPermission::Granted(now.wrapping_add(grant_duration))
     }
 
     // Checks if the timeout is not reached, false for differing ClockValue frequencies.
-    pub fn is_granted(&self, now: ClockValue) -> bool {
+    pub fn is_granted(&self, now: u64) -> bool {
         if let TimedPermission::Granted(timeout) = self {
-            if let Some(remaining_duration) = timeout.wrapping_sub(now) {
-                return remaining_duration > Duration::from_ms(0);
-            }
+            let remaining_duration = timeout.wrapping_sub(now);
+            return remaining_duration > 0;
         }
         false
     }
 
     // Consumes the state and returns the current new permission state at time "now".
     // Returns a new state for differing ClockValue frequencies.
-    pub fn check_expiration(self, now: ClockValue) -> TimedPermission {
+    pub fn check_expiration(self, now: u64) -> TimedPermission {
         if let TimedPermission::Granted(timeout) = self {
-            if let Some(remaining_duration) = timeout.wrapping_sub(now) {
-                if remaining_duration > Duration::from_ms(0) {
-                    return TimedPermission::Granted(timeout);
-                }
+            let remaining_duration = timeout.wrapping_sub(now);
+            if remaining_duration > 0 {
+                return TimedPermission::Granted(timeout);
             }
         }
         TimedPermission::Waiting
@@ -61,16 +57,16 @@ pub struct U2fUserPresenceState {
     // Button touch timeouts, while user presence is requested, are saved here.
     has_up: TimedPermission,
     // This is the timeout duration of user presence requests.
-    request_duration: Duration<isize>,
+    request_duration: u64,
     // This is the timeout duration of button touches.
-    presence_duration: Duration<isize>,
+    presence_duration: u64,
 }
 
 #[cfg(feature = "with_ctap1")]
 impl U2fUserPresenceState {
     pub fn new(
-        request_duration: Duration<isize>,
-        presence_duration: Duration<isize>,
+        request_duration: u64,
+        presence_duration: u64,
     ) -> U2fUserPresenceState {
         U2fUserPresenceState {
             needs_up: TimedPermission::Waiting,
@@ -81,7 +77,7 @@ impl U2fUserPresenceState {
     }
 
     // Granting user presence is ignored if it needs activation, but waits. Also cleans up.
-    pub fn grant_up(&mut self, now: ClockValue) {
+    pub fn grant_up(&mut self, now: u64) {
         self.check_expiration(now);
         if self.needs_up.is_granted(now) {
             self.needs_up = TimedPermission::Waiting;
@@ -90,7 +86,7 @@ impl U2fUserPresenceState {
     }
 
     // This marks user presence as needed or uses it up if already granted. Also cleans up.
-    pub fn consume_up(&mut self, now: ClockValue) -> bool {
+    pub fn consume_up(&mut self, now: u64) -> bool {
         self.check_expiration(now);
         if self.has_up.is_granted(now) {
             self.has_up = TimedPermission::Waiting;
@@ -102,13 +98,13 @@ impl U2fUserPresenceState {
     }
 
     // Returns if user presence was requested. Also cleans up.
-    pub fn is_up_needed(&mut self, now: ClockValue) -> bool {
+    pub fn is_up_needed(&mut self, now: u64) -> bool {
         self.check_expiration(now);
         self.needs_up.is_granted(now)
     }
 
     // If you don't regularly call any other function, not cleaning up leads to overflow problems.
-    pub fn check_expiration(&mut self, now: ClockValue) {
+    pub fn check_expiration(&mut self, now: u64) {
         self.needs_up = self.needs_up.check_expiration(now);
         self.has_up = self.has_up.check_expiration(now);
     }
@@ -121,12 +117,12 @@ mod test {
     use core::isize;
 
     const CLOCK_FREQUENCY_HZ: usize = 32768;
-    const ZERO: ClockValue = ClockValue::new(0, CLOCK_FREQUENCY_HZ);
-    const BIG_POSITIVE: ClockValue = ClockValue::new(isize::MAX / 1000 - 1, CLOCK_FREQUENCY_HZ);
-    const NEGATIVE: ClockValue = ClockValue::new(-1, CLOCK_FREQUENCY_HZ);
+    const ZERO: u64 = 0;
+    const BIG_POSITIVE: u64 = 2_000_000_000;
+    const NEGATIVE: u64 = 3_000_000_000;
     const SMALL_NEGATIVE: ClockValue = ClockValue::new(isize::MIN / 1000 + 1, CLOCK_FREQUENCY_HZ);
-    const REQUEST_DURATION: Duration<isize> = Duration::from_ms(1000);
-    const PRESENCE_DURATION: Duration<isize> = Duration::from_ms(1000);
+    const REQUEST_DURATION: u64 = 1000;
+    const PRESENCE_DURATION: u64 = 1000;
 
     fn grant_up_when_needed(start_time: ClockValue) {
         let mut u2f_state = U2fUserPresenceState::new(REQUEST_DURATION, PRESENCE_DURATION);

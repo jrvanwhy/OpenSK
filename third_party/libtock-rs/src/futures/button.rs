@@ -10,14 +10,25 @@ use core::cell::Cell;
 use core::convert::TryFrom;
 use core::task::{Context, Poll};
 use crate::lw::async_util::{Forwarder, TockStatic};
-use crate::lw::button::{Driver, Event};
+use crate::lw::button::{Driver, Event, GetStateError};
 use crate::returncode_subset;
+
+pub fn get_state(index: usize) -> Result<bool, GetStateError> {
+    DRIVER.get_state(index)
+}
 
 /// Holds static data structures required to route Button events to the correct
 /// future. Initializing ButtonFuture requires passing it a &'static Button.
 pub struct Button {
-    next: Cell<Option<&'static Button>>,
-    state: Cell<ButtonState>,
+    next: TockStatic<Cell<Option<&'static Button>>>,
+    state: TockStatic<Cell<ButtonState>>,
+}
+
+impl Button {
+    pub const fn new() -> Button {
+        Button { next: TockStatic::new(Cell::new(None)),
+                 state: TockStatic::new(Cell::new(ButtonState::Uninitialized)) }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]

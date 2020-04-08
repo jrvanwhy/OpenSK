@@ -56,7 +56,6 @@ use crypto::sha256::Sha256;
 use crypto::Hash256;
 #[cfg(feature = "debug_ctap")]
 use libtock::console::Console;
-use libtock::timer::{Duration, Timestamp};
 use subtle::ConstantTimeEq;
 
 // This flag enables or disables basic attestation for FIDO2. U2F is unaffected by
@@ -90,10 +89,10 @@ const AT_FLAG: u8 = 0x40;
 // Set this bit when an extension is used.
 const ED_FLAG: u8 = 0x80;
 
-pub const TOUCH_TIMEOUT_MS: isize = 30000;
+pub const TOUCH_TIMEOUT: u64 = 30000;
 #[cfg(feature = "with_ctap1")]
-const U2F_UP_PROMPT_TIMEOUT: Duration<isize> = Duration::from_ms(10000);
-const RESET_TIMEOUT_MS: isize = 10000;
+const U2F_UP_PROMPT_TIMEOUT: u64 = 10000;
+const RESET_TIMEOUT: u64 = 10000;
 
 pub const FIDO2_VERSION_STRING: &str = "FIDO_2_0";
 #[cfg(feature = "with_ctap1")]
@@ -224,13 +223,13 @@ where
             #[cfg(feature = "with_ctap1")]
             u2f_up_state: U2fUserPresenceState::new(
                 U2F_UP_PROMPT_TIMEOUT,
-                Duration::from_ms(TOUCH_TIMEOUT_MS),
+                TOUCH_TIMEOUT,
             ),
         }
     }
 
-    pub fn check_disable_reset(&mut self, timestamp: Timestamp<isize>) {
-        if timestamp - Timestamp::<isize>::from_ms(0) > Duration::from_ms(RESET_TIMEOUT_MS) {
+    pub fn check_disable_reset(&mut self, timestamp: u64) {
+        if timestamp > RESET_TIMEOUT {
             self.accepts_reset = false;
         }
     }
@@ -338,7 +337,7 @@ where
                 {
                     self.u2f_up_state = U2fUserPresenceState::new(
                         U2F_UP_PROMPT_TIMEOUT,
-                        Duration::from_ms(TOUCH_TIMEOUT_MS),
+                        TOUCH_TIMEOUT,
                     );
                 }
                 let response = match command {
@@ -1049,7 +1048,7 @@ where
         {
             self.u2f_up_state = U2fUserPresenceState::new(
                 U2F_UP_PROMPT_TIMEOUT,
-                Duration::from_ms(TOUCH_TIMEOUT_MS),
+                TOUCH_TIMEOUT,
             );
         }
         Ok(ResponseData::AuthenticatorReset)

@@ -22,7 +22,6 @@ use super::ctap1;
 use super::status_code::Ctap2StatusCode;
 use super::timed_permission::TimedPermission;
 use super::CtapState;
-use crate::timer::{ClockValue, Duration, Timestamp};
 use alloc::vec::Vec;
 #[cfg(feature = "debug_ctap")]
 use core::fmt::Write;
@@ -132,8 +131,8 @@ impl CtapHid {
         CtapHid::CAPABILITY_WINK | CtapHid::CAPABILITY_CBOR | CtapHid::CAPABILITY_NMSG;
 
     // TODO: Is this timeout duration specified?
-    const TIMEOUT_DURATION: Duration<isize> = Duration::from_ms(100);
-    const WINK_TIMEOUT_DURATION: Duration<isize> = Duration::from_ms(5000);
+    const TIMEOUT_DURATION: u64 = 100;
+    const WINK_TIMEOUT_DURATION: u64 = 1000;
 
     pub fn new() -> CtapHid {
         CtapHid {
@@ -148,7 +147,7 @@ impl CtapHid {
     pub fn process_hid_packet<R, CheckUserPresence>(
         &mut self,
         packet: &HidPacket,
-        clock_value: ClockValue,
+        clock_value: u64,
         ctap_state: &mut CtapState<R, CheckUserPresence>,
     ) -> HidPacketIterator
     where
@@ -158,7 +157,7 @@ impl CtapHid {
         // TODO: Send COMMAND_KEEPALIVE every 100ms?
         match self
             .assembler
-            .parse_packet(packet, Timestamp::<isize>::from_clock_value(clock_value))
+            .parse_packet(packet, clock_value)
         {
             Ok(Some(message)) => {
                 #[cfg(feature = "debug_ctap")]
@@ -439,8 +438,8 @@ mod test {
 
     const CLOCK_FREQUENCY_HZ: usize = 32768;
     // Except for tests for timeouts (done in ctap1.rs), transactions are time independant.
-    const DUMMY_CLOCK_VALUE: ClockValue = ClockValue::new(0, CLOCK_FREQUENCY_HZ);
-    const DUMMY_TIMESTAMP: Timestamp<isize> = Timestamp::from_ms(0);
+    const DUMMY_CLOCK_VALUE: u64 = 1000;
+    const DUMMY_TIMESTAMP: u64 = 0;
 
     fn process_messages<CheckUserPresence>(
         ctap_hid: &mut CtapHid,

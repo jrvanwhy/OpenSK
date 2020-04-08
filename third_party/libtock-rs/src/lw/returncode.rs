@@ -45,6 +45,9 @@ macro_rules! returncode_subset {
 #[macro_export]
 macro_rules! returncode_with_vis {
     [$p:vis enum $name:ident { $($v:ident),* }] => {
+        // TODO: Replace with a more efficient manual Debug implementation or
+        // some other trait (e.g. ufmt-like).
+        #[derive(Debug)]
         $p enum $name { $($v = $crate::returncode_value![$v]),* }
         $($crate::returncode_trait_impl!{$name, $v})*
 

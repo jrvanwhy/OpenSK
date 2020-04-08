@@ -31,35 +31,20 @@ extern crate crypto;
 mod ctap;
 mod usb_ctap_hid;
 
-use core::cell::Cell;
 #[cfg(feature = "debug_ctap")]
 use core::fmt::Write;
 use crypto::rng256::TockRng256;
 use ctap::hid::{ChannelID, CtapHid, KeepaliveStatus, ProcessedPacket};
 use ctap::status_code::Ctap2StatusCode;
 use ctap::CtapState;
-use libtock::buttons;
-use libtock::buttons::ButtonState;
 #[cfg(feature = "debug_ctap")]
 use libtock::console::Console;
 use libtock::lw::led;
-use libtock::result::TockValue;
-use libtock::syscalls;
-use libtock::timer;
-#[cfg(feature = "debug_ctap")]
-use libtock::timer::Timer;
-use libtock::timer::{Duration, StopAlarmError, Timestamp};
 
-const KEEPALIVE_DELAY_MS: isize = 100;
-const KEEPALIVE_DELAY: Duration<isize> = Duration::from_ms(KEEPALIVE_DELAY_MS);
-const SEND_TIMEOUT: Duration<isize> = Duration::from_ms(1000);
+const KEEPALIVE_DELAY: u64 = 1000;
+const SEND_TIMEOUT: u64 = 1000;
 
 fn main() {
-    // Setup the timer with a dummy callback (we only care about reading the current time, but the
-    // API forces us to set an alarm callback too).
-    let mut with_callback = timer::with_callback(|_, _| {});
-    let timer = with_callback.init().unwrap();
-
     // Setup USB driver.
     if !usb_ctap_hid::setup() {
         panic!("Cannot setup USB driver");
@@ -70,60 +55,32 @@ fn main() {
     let mut ctap_hid = CtapHid::new();
 
     let mut led_counter = 0;
-    let mut last_led_increment = timer.get_current_clock();
+    let mut last_led_increment = libtock::futures::alarm::get_time();
 
     // Main loop. If CTAP1 is used, we register button presses for U2F while receiving and waiting.
     // The way TockOS and apps currently interact, callbacks need a yield syscall to execute,
     // making consistent blinking patterns and sending keepalives harder.
     loop {
-        // Create the button callback, used for CTAP1.
-        #[cfg(feature = "with_ctap1")]
-        let button_touched = Cell::new(false);
-        #[cfg(feature = "with_ctap1")]
-        let mut buttons_callback = buttons::with_callback(|_button_num, state| {
-            match state {
-                ButtonState::Pressed => button_touched.set(true),
-                ButtonState::Released => (),
-            };
-        });
-        #[cfg(feature = "with_ctap1")]
-        let mut buttons = buttons_callback.init().unwrap();
-        #[cfg(feature = "with_ctap1")]
-        // At the moment, all buttons are accepted. You can customize your setup here.
-        for mut button in &mut buttons {
-            button.enable().unwrap();
-        }
-
         let mut pkt_request = [0; 64];
         let has_packet = match usb_ctap_hid::recv_with_timeout(&mut pkt_request, KEEPALIVE_DELAY) {
             Some(usb_ctap_hid::SendOrRecvStatus::Received) => {
-                #[cfg(feature = "debug_ctap")]
-                print_packet_notice("Received packet", &timer);
                 true
             }
             Some(_) => panic!("Error receiving packet"),
             None => false,
         };
 
-        let now = timer.get_current_clock();
+        let now = libtock::futures::alarm::get_time();
         #[cfg(feature = "with_ctap1")]
         {
-            if button_touched.get() {
+            if libtock::futures::button::get_state(0).unwrap() {
                 ctap_state.u2f_up_state.grant_up(now);
             }
-            // Cleanup button callbacks. We miss button presses while processing though.
-            // Heavy computation mostly follows a registered touch luckily. Unregistering
-            // callbacks is important to not clash with those from check_user_presence.
-            for mut button in &mut buttons {
-                button.disable().unwrap();
-            }
-            drop(buttons);
-            drop(buttons_callback);
         }
 
         // These calls are making sure that even for long inactivity, wrapping clock values
         // never randomly wink or grant user presence for U2F.
-        ctap_state.check_disable_reset(Timestamp::<isize>::from_clock_value(now));
+        ctap_state.check_disable_reset(now);
         ctap_hid.wink_permission = ctap_hid.wink_permission.check_expiration(now);
 
         if has_packet {
@@ -133,36 +90,25 @@ fn main() {
                 let status = usb_ctap_hid::send_or_recv_with_timeout(&mut pkt_reply, SEND_TIMEOUT);
                 match status {
                     None => {
-                        #[cfg(feature = "debug_ctap")]
-                        print_packet_notice("Sending packet timed out", &timer);
                         // TODO: reset the ctap_hid state.
                         // Since sending the packet timed out, we cancel this reply.
                         break;
                     }
                     Some(usb_ctap_hid::SendOrRecvStatus::Error) => panic!("Error sending packet"),
                     Some(usb_ctap_hid::SendOrRecvStatus::Sent) => {
-                        #[cfg(feature = "debug_ctap")]
-                        print_packet_notice("Sent packet", &timer);
                     }
                     Some(usb_ctap_hid::SendOrRecvStatus::Received) => {
-                        #[cfg(feature = "debug_ctap")]
-                        print_packet_notice("Received an UNEXPECTED packet", &timer);
                         // TODO: handle this unexpected packet.
                     }
                 }
             }
         }
 
-        let now = timer.get_current_clock();
-        if let Some(wait_duration) = now.wrapping_sub(last_led_increment) {
-            if wait_duration > KEEPALIVE_DELAY {
-                // Loops quickly when waiting for U2F user presence, so the next LED blink
-                // state is only set if enough time has elapsed.
-                led_counter += 1;
-                last_led_increment = now;
-            }
-        } else {
-            // This branch means the clock frequency changed. This should never happen.
+        let now = libtock::futures::alarm::get_time();
+        let wait_duration = now.wrapping_sub(last_led_increment);
+        if wait_duration > KEEPALIVE_DELAY {
+            // Loops quickly when waiting for U2F user presence, so the next LED blink
+            // state is only set if enough time has elapsed.
             led_counter += 1;
             last_led_increment = now;
         }
@@ -186,24 +132,10 @@ fn main() {
     }
 }
 
-#[cfg(feature = "debug_ctap")]
-fn print_packet_notice(notice_text: &str, timer: &Timer) {
-    let now_us =
-        (Timestamp::<f64>::from_clock_value(timer.get_current_clock()).ms() * 1000.0) as u64;
-    writeln!(
-        Console::new(),
-        "{} at {}.{:06} s",
-        notice_text,
-        now_us / 1_000_000,
-        now_us % 1_000_000
-    )
-    .unwrap();
-}
-
 // Returns whether the keepalive was sent, or false if cancelled.
 fn send_keepalive_up_needed(
     cid: ChannelID,
-    timeout: Duration<isize>,
+    timeout: u64,
 ) -> Result<(), Ctap2StatusCode> {
     let keepalive_msg = CtapHid::keepalive(cid, KeepaliveStatus::UpNeeded);
     for mut pkt in keepalive_msg {
@@ -335,72 +267,42 @@ fn switch_off_leds() {
 
 fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
     // The timeout is N times the keepalive delay.
-    const TIMEOUT_ITERATIONS: isize = ctap::TOUCH_TIMEOUT_MS / KEEPALIVE_DELAY_MS;
+    const TIMEOUT_ITERATIONS: isize = (ctap::TOUCH_TIMEOUT / KEEPALIVE_DELAY) as isize;
 
     // First, send a keep-alive packet to notify that the keep-alive status has changed.
     send_keepalive_up_needed(cid, KEEPALIVE_DELAY)?;
-
-    // Listen to the button presses.
-    let button_touched = Cell::new(false);
-    let mut buttons_callback = buttons::with_callback(|_button_num, state| {
-        match state {
-            ButtonState::Pressed => button_touched.set(true),
-            ButtonState::Released => (),
-        };
-    });
-    let mut buttons = buttons_callback.init().unwrap();
-    // At the moment, all buttons are accepted. You can customize your setup here.
-    for mut button in &mut buttons {
-        button.enable().unwrap();
-    }
 
     let mut keepalive_response = Ok(());
     for i in 0..TIMEOUT_ITERATIONS {
         blink_leds(i);
 
-        // Setup a keep-alive callback.
-        let keepalive_expired = Cell::new(false);
-        let mut keepalive_callback = timer::with_callback(|_, _| {
-            keepalive_expired.set(true);
-        });
-        let mut keepalive = keepalive_callback.init().unwrap();
-        let keepalive_alarm = keepalive.set_alarm(KEEPALIVE_DELAY).unwrap();
-
         // Wait for a button touch or an alarm.
-        syscalls::yieldk_for(|| button_touched.get() || keepalive_expired.get());
-
-        // Cleanup alarm callback.
-        match keepalive.stop_alarm(keepalive_alarm) {
-            Ok(()) => (),
-            Err(TockValue::Expected(StopAlarmError::AlreadyDisabled)) => {
-                assert!(keepalive_expired.get())
-            }
-            Err(e) => panic!("Unexpected error when stopping alarm: {:?}", e),
-        }
+        static BUTTON: libtock::futures::button::Button = libtock::futures::button::Button::new();
+        libtock::futures::executor::block_on(
+            libtock::futures::combinator::WaitFirst::new(
+                libtock::futures::button::ButtonFuture::new(&BUTTON, 0, true).unwrap(),
+                libtock::futures::alarm::AlarmFuture::new(1000),
+            )
+        );
 
         // TODO: this may take arbitrary time. The keepalive_delay should be adjusted accordingly,
         // so that LEDs blink with a consistent pattern.
-        if keepalive_expired.get() {
+        if !libtock::futures::button::get_state(0).unwrap() {
             // Do not return immediately, because we must clean up still.
             keepalive_response = send_keepalive_up_needed(cid, KEEPALIVE_DELAY);
         }
 
-        if button_touched.get() || keepalive_response.is_err() {
+        if libtock::futures::button::get_state(0).unwrap() || keepalive_response.is_err() {
             break;
         }
     }
 
     switch_off_leds();
 
-    // Cleanup button callbacks.
-    for mut button in &mut buttons {
-        button.disable().unwrap();
-    }
-
     // Returns whether the user was present.
     if keepalive_response.is_err() {
         keepalive_response
-    } else if button_touched.get() {
+    } else if libtock::futures::button::get_state(0).unwrap() {
         Ok(())
     } else {
         Err(Ctap2StatusCode::CTAP2_ERR_USER_ACTION_TIMEOUT)

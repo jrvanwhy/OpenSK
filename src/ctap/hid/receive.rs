@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::{ChannelID, CtapHid, HidPacket, Message, ProcessedPacket};
-use crate::timer::Timestamp;
 use alloc::vec::Vec;
 use core::mem::swap;
 
@@ -24,7 +23,7 @@ pub struct MessageAssembler {
     // Current channel ID.
     cid: ChannelID,
     // Timestamp of the last packet received on the current channel.
-    last_timestamp: Timestamp<isize>,
+    last_timestamp: u64,
     // Current command.
     cmd: u8,
     // Sequence number expected for the next packet.
@@ -54,7 +53,7 @@ impl MessageAssembler {
         MessageAssembler {
             idle: true,
             cid: [0, 0, 0, 0],
-            last_timestamp: Timestamp::from_ms(0),
+            last_timestamp: 0,
             cmd: 0,
             seq: 0,
             remaining_payload_len: 0,
@@ -67,7 +66,7 @@ impl MessageAssembler {
     pub fn reset(&mut self) {
         self.idle = true;
         self.cid = [0, 0, 0, 0];
-        self.last_timestamp = Timestamp::from_ms(0);
+        self.last_timestamp = 0;
         self.cmd = 0;
         self.seq = 0;
         self.remaining_payload_len = 0;
@@ -84,7 +83,7 @@ impl MessageAssembler {
     pub fn parse_packet(
         &mut self,
         packet: &HidPacket,
-        timestamp: Timestamp<isize>,
+        timestamp: u64,
     ) -> Result<Option<Message>, (ChannelID, Error)> {
         // TODO: Support non-full-speed devices (i.e. packet len != 64)? This isn't recommended by
         // section 8.8.1
@@ -157,7 +156,7 @@ impl MessageAssembler {
         cmd: u8,
         len: usize,
         data: &[u8],
-        timestamp: Timestamp<isize>,
+        timestamp: u64,
     ) -> Option<Message> {
         // TODO: Should invalid commands/payload lengths be rejected early, i.e. as soon as the
         // initialization packet is received, or should we build a message and then catch the
@@ -199,7 +198,7 @@ mod test {
 
     // Except for tests that exercise timeouts, all packets are synchronized at the same dummy
     // timestamp.
-    const DUMMY_TIMESTAMP: Timestamp<isize> = Timestamp::from_ms(0);
+    const DUMMY_TIMESTAMP: u64 = 0;
 
     fn byte_extend(bytes: &[u8], padding: u8) -> HidPacket {
         let len = bytes.len();

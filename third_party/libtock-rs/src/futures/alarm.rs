@@ -6,6 +6,10 @@ use core::task::{Context, Poll};
 use crate::lw::async_util::TockStatic;
 use crate::lw::time::{AlarmFired, Clock};
 
+pub fn get_time() -> u64 {
+    CLOCK.get_time()
+}
+
 pub struct AlarmFuture {
     setpoint: u64,
 }

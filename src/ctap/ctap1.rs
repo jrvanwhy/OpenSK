@@ -16,7 +16,6 @@ use super::hid::ChannelID;
 use super::key_material::{ATTESTATION_CERTIFICATE, ATTESTATION_PRIVATE_KEY};
 use super::status_code::Ctap2StatusCode;
 use super::CtapState;
-use crate::timer::ClockValue;
 use alloc::vec::Vec;
 use core::convert::Into;
 use core::convert::TryFrom;
@@ -217,7 +216,7 @@ impl Ctap1Command {
     pub fn process_command<R, CheckUserPresence>(
         message: &[u8],
         ctap_state: &mut CtapState<R, CheckUserPresence>,
-        clock_value: ClockValue,
+        clock_value: u64,
     ) -> Result<Vec<u8>, Ctap1StatusCode>
     where
         R: Rng256,
@@ -371,11 +370,8 @@ mod test {
     use crypto::Hash256;
 
     const CLOCK_FREQUENCY_HZ: usize = 32768;
-    const START_CLOCK_VALUE: ClockValue = ClockValue::new(0, CLOCK_FREQUENCY_HZ);
-    const TIMEOUT_CLOCK_VALUE: ClockValue = ClockValue::new(
-        (30001 * CLOCK_FREQUENCY_HZ as isize) / 1000,
-        CLOCK_FREQUENCY_HZ,
-    );
+    const START_CLOCK_VALUE: u64 = 0;
+    const TIMEOUT_CLOCK_VALUE: u64 = 1000;
 
     fn create_register_message(application: &[u8; 32]) -> Vec<u8> {
         let mut message = vec![

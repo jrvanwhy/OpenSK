@@ -17,11 +17,8 @@ use core::cell::Cell;
 use core::fmt::Write;
 #[cfg(feature = "debug_ctap")]
 use libtock::console::Console;
-use libtock::result::TockValue;
 use libtock::result::{EALREADY, EBUSY, SUCCESS};
 use libtock::syscalls;
-use libtock::timer;
-use libtock::timer::{Duration, StopAlarmError};
 
 const DRIVER_NUMBER: usize = 0x20009;
 
@@ -164,7 +161,7 @@ pub fn send_or_recv(buf: &mut [u8; 64]) -> SendOrRecvStatus {
 // If the timeout elapses, return None.
 pub fn recv_with_timeout(
     buf: &mut [u8; 64],
-    timeout_delay: Duration<isize>,
+    timeout_delay: u64,
 ) -> Option<SendOrRecvStatus> {
     let result = syscalls::allow(DRIVER_NUMBER, allow_nr::RECEIVE, buf);
     if result.is_err() {
@@ -185,43 +182,18 @@ pub fn recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
-    // Setup a time-out callback.
-    let timeout_expired = Cell::new(false);
-    let mut timeout_callback = timer::with_callback(|_, _| {
-        timeout_expired.set(true);
-    });
-    let mut timeout = match timeout_callback.init() {
-        Ok(x) => x,
-        Err(_) => return Some(SendOrRecvStatus::Error),
-    };
-    let timeout_alarm = match timeout.set_alarm(timeout_delay) {
-        Ok(x) => x,
-        Err(_) => return Some(SendOrRecvStatus::Error),
-    };
-
     // Trigger USB reception.
     let result_code = unsafe { syscalls::command(DRIVER_NUMBER, command_nr::RECEIVE, 0, 0) };
     if result_code != 0 {
         return Some(SendOrRecvStatus::Error);
     }
 
-    syscalls::yieldk_for(|| status.get().is_some() || timeout_expired.get());
-
-    // Cleanup alarm callback.
-    match timeout.stop_alarm(timeout_alarm) {
-        Ok(()) => (),
-        Err(TockValue::Expected(StopAlarmError::AlreadyDisabled)) => {
-            if !timeout_expired.get() {
-                #[cfg(feature = "debug_ctap")]
-                writeln!(
-                    Console::new(),
-                    "The receive timeout already expired, but the callback wasn't executed."
-                )
-                .unwrap();
-            }
-        }
-        Err(e) => panic!("Unexpected error when stopping alarm: {:?}", e),
-    }
+    libtock::futures::executor::block_on(
+        libtock::futures::combinator::WaitFirst::new(
+            UsbFuture { status: &status },
+            libtock::futures::alarm::AlarmFuture::new(timeout_delay)
+        )
+    );
 
     // Cancel USB transaction if necessary.
     if status.get().is_none() {
@@ -249,11 +221,24 @@ pub fn recv_with_timeout(
     status.get()
 }
 
+struct UsbFuture<'l> {
+    status: &'l Cell<Option<SendOrRecvStatus>>,
+}
+impl<'l> core::future::Future for UsbFuture<'l> {
+    type Output = ();
+    fn poll(self: core::pin::Pin<&mut Self>, _cx: &mut core::task::Context) -> core::task::Poll<()> {
+        match self.status.get() {
+            None => core::task::Poll::Pending,
+            Some(_) => core::task::Poll::Ready(()),
+        }
+    }
+}
+
 // Same as send_or_recv, but with a timeout.
 // If the timeout elapses, return None.
 pub fn send_or_recv_with_timeout(
     buf: &mut [u8; 64],
-    timeout_delay: Duration<isize>,
+    timeout_delay: u64,
 ) -> Option<SendOrRecvStatus> {
     let result = syscalls::allow(DRIVER_NUMBER, allow_nr::TRANSMIT_OR_RECEIVE, buf);
     if result.is_err() {
@@ -276,20 +261,6 @@ pub fn send_or_recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
-    // Setup a time-out callback.
-    let timeout_expired = Cell::new(false);
-    let mut timeout_callback = timer::with_callback(|_, _| {
-        timeout_expired.set(true);
-    });
-    let mut timeout = match timeout_callback.init() {
-        Ok(x) => x,
-        Err(_) => return Some(SendOrRecvStatus::Error),
-    };
-    let timeout_alarm = match timeout.set_alarm(timeout_delay) {
-        Ok(x) => x,
-        Err(_) => return Some(SendOrRecvStatus::Error),
-    };
-
     // Trigger USB transmission.
     let result_code =
         unsafe { syscalls::command(DRIVER_NUMBER, command_nr::TRANSMIT_OR_RECEIVE, 0, 0) };
@@ -297,23 +268,12 @@ pub fn send_or_recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
-    syscalls::yieldk_for(|| status.get().is_some() || timeout_expired.get());
-
-    // Cleanup alarm callback.
-    match timeout.stop_alarm(timeout_alarm) {
-        Ok(()) => (),
-        Err(TockValue::Expected(StopAlarmError::AlreadyDisabled)) => {
-            if !timeout_expired.get() {
-                #[cfg(feature = "debug_ctap")]
-                writeln!(
-                    Console::new(),
-                    "The send/receive timeout already expired, but the callback wasn't executed."
-                )
-                .unwrap();
-            }
-        }
-        Err(e) => panic!("Unexpected error when stopping alarm: {:?}", e),
-    }
+    libtock::futures::executor::block_on(
+        libtock::futures::combinator::WaitFirst::new(
+            UsbFuture { status: &status },
+            libtock::futures::alarm::AlarmFuture::new(timeout_delay)
+        )
+    );
 
     // Cancel USB transaction if necessary.
     if status.get().is_none() {
