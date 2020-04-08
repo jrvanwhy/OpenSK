@@ -88,7 +88,7 @@ returncode_subset![ pub enum GetStateError { ENODEVICE } ];
 // We don't use crate::syscalls::subscribe as that requires a unique reference
 // and we need subscribe to work with a shared reference. This is the callback
 // we use instead.
-unsafe extern "C" fn callback<F: Forwarder<Event>>(index: usize, pressed: usize, _: usize, driver: usize) {
+unsafe extern fn callback<F: Forwarder<Event>>(index: usize, pressed: usize, _: usize, driver: usize) {
     let driver = &*(driver as *const Driver<F>);
     // Convert `pressed` into a bool for use in the Event. Security note:
     // although `pressed` should always be 0 or 1, applications do not trust

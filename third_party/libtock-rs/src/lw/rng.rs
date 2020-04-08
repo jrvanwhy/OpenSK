@@ -72,7 +72,7 @@ pub enum FetchError {
 // We don't use crate::syscalls::subscribe as that requires a unique reference
 // and we need subscribe to work with a shared reference. This is the callback
 // we use instead.
-unsafe extern "C" fn callback<F: Forwarder<Option<Buffer>>>(_: usize, _: usize, _: usize, rng: usize) {
+unsafe extern fn callback<F: Forwarder<Option<Buffer>>>(_: usize, _: usize, _: usize, rng: usize) {
     let rng = &*(rng as *const Rng<F>);
     if allow_ptr(DRIVER_NUM, BUFFER_NUM, null_mut(), 0) != 0 {
         // Failed to un-allow the buffer. We leave the buffer values set in Rng,
