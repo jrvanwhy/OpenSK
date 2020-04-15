@@ -3,6 +3,17 @@
 
 use core::cell::{Cell, UnsafeCell};
 
+/// A trait implemented by asynchronous components. `call` is the first of the
+/// two-phase asynchronous call pattern.
+pub trait AsyncCall<Request, SyncResponse> {
+    fn call(&self, request: Request) -> SyncResponse;
+}
+
+/// A trait that links an asynchronous component's client to that component.
+pub trait AsyncLink<Request, SyncResponse>: Copy {
+    fn invoke(self, request: Request) -> SyncResponse;
+}
+
 /// A trait implemented by clients of asynchronous components. Has a callback
 /// that receives a value of type T.
 pub trait Client<T> {

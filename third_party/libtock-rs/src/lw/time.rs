@@ -16,7 +16,7 @@
 // that happen (as Tock is not a RTOS) so we simply hope such a large delay
 // never happens.
 
-use crate::lw::async_util::Forwarder;
+use crate::lw::async_util::{AsyncCall, AsyncLink, Client, Forwarder};
 use crate::syscalls::{command, subscribe_ptr};
 
 const DRIVER_NUM: usize = 0;
@@ -69,8 +69,12 @@ impl<F: Forwarder<AlarmFired>> Clock<F> {
     pub fn get_alarm(&self) -> u64 {
         self.client_setpoint.get()
     }
+}
 
-    pub fn set_alarm(&self, time: u64) -> Result<(), InPast> {
+pub struct AlarmFired;
+
+impl<F: Forwarder<AlarmFired>> AsyncCall<u64, Result<(), InPast>> for Clock<F> {
+    fn call(&self, time: u64) -> Result<(), InPast> {
         self.client_setpoint.set(time);
         if time >= self.last_callback.get() + UPDATE_PERIOD as u64 {
             return Ok(());
@@ -86,8 +90,21 @@ impl<F: Forwarder<AlarmFired>> Clock<F> {
     }
 }
 
-pub struct AlarmFired;
 pub struct InPast;
+
+pub struct ClockMux<L: AsyncLink<u64, Result<(), InPast>>> {
+    link: L,
+}
+
+impl<L: AsyncLink<u64, Result<(), InPast>>> Client<AlarmFired> for ClockMux<L> {
+    fn callback(&self, response: AlarmFired) {
+        // TODO
+    }
+}
+
+pub struct ClockClient<L: AsyncLink<u64, Result<(), InPast>>> {
+	
+}
 
 // Finds the next 64-bit time value that matches the provided 32-bit kernel time
 // value.
