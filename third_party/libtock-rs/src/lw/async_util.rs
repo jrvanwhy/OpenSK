@@ -2,11 +2,49 @@
 //! prototype.
 
 use core::cell::{Cell, UnsafeCell};
+use core::num::NonZeroUsize;
 
 /// A trait implemented by clients of asynchronous components. Has a callback
 /// that receives a value of type T.
 pub trait Client<T> {
     fn callback(&self, response: T);
+}
+
+/// A lighter-weight version of &dyn Client<T>. &dyn references internally
+/// contain two pointers: the pointer to the object's data and a pointer to a
+/// vtable. The vtable contains the type's size, alignment, destructor, and
+/// callback pointer, and is therefore 4 words in size. DynClient contains to
+/// words: the data pointer and the callback pointer.
+pub struct DynClient<'a, T> {
+    data: NonZeroUsize,
+
+    // Because we don't know the real type of client, we have to erase the type
+    // of the data pointer. As far as I can tell, Rust does not *guarantee* that
+    // two implementations of Client<T>::callback have the same ABI, even when
+    // the T is the same in both cases. Instead, we point to a shim that has a
+    // fixed ABI regardless of the underlying client, and hope that shim
+    // optimizes away.
+    callback: unsafe fn(NonZeroUsize, T),
+
+    _phantom: core::marker::PhantomData<&'a dyn Client<T>>,
+}
+
+impl<'a, T> DynClient<'a, T> {
+    pub fn new<C: Client<T>>(client: &'a C) -> DynClient<'a, T> {
+        DynClient {
+            data: unsafe { NonZeroUsize::new_unchecked(client as *const C as usize) },
+            callback: erased_call::<T, C>,
+            _phantom: core::marker::PhantomData,
+        }
+    }
+
+    pub fn callback(&self, response: T) {
+        unsafe { (self.callback)(self.data, response); }
+    }
+}
+
+unsafe fn erased_call<T, C: Client<T>>(data: NonZeroUsize, response: T) {
+    C::callback(&*(data.get() as *const C), response)
 }
 
 /// A trait for "forwarders", which are type system shims that route callbacks
