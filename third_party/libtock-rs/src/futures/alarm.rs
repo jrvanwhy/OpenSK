@@ -1,50 +1,41 @@
 /// Futures-based interface to wait for a given amount of time. Uses the
 /// lightweight timer/alarm driver.
 
-use core::cell::Cell;
 use core::task::{Context, Poll};
-use crate::lw::async_util::TockStatic;
-use crate::lw::time::{AlarmFired, Clock};
+use crate::lw::time::{AlarmClock, AlarmFired};
 
-pub fn get_time() -> u64 {
-    CLOCK.get_time()
-}
-
-pub struct AlarmFuture {
+pub struct AlarmFuture<C: AlarmClock + 'static> {
+    clock: &'static C,
     setpoint: u64,
 }
 
-impl AlarmFuture {
+impl<C: AlarmClock> AlarmFuture<C> {
     // Sets an alarm for `delay` ticks in the future.
-    pub fn new(delay: u64) -> AlarmFuture {
-        if !INITIALIZED.get() { CLOCK.init(); INITIALIZED.set(true); }
-        AlarmFuture { setpoint: delay + CLOCK.get_time() }
+    pub fn new(clock: &'static C, delay: u64) -> AlarmFuture<C> {
+        AlarmFuture { clock, setpoint: delay + clock.get_time() }
     }
 }
 
-impl core::future::Future for AlarmFuture {
+impl<C: AlarmClock> core::future::Future for AlarmFuture<C> {
     type Output = ();
 
     fn poll(self: core::pin::Pin<&mut Self>, _cx: &mut Context) -> Poll<()> {
-        let cur_alarm = CLOCK.get_alarm();
+        let cur_alarm = self.clock.get_alarm();
         if cur_alarm > self.setpoint {
-            if CLOCK.set_alarm(self.setpoint).is_ok() {
+            if self.clock.set_alarm(self.setpoint).is_ok() {
                 return Poll::Pending;
             }
             // I'm not sure whether ignoring this error is a bug. This logic
             // would probably change if we store a Waker.
-            let _ = CLOCK.set_alarm(cur_alarm);
+            let _ = self.clock.set_alarm(cur_alarm);
             return Poll::Ready(());
         }
         Poll::Pending
     }
 }
 
-static INITIALIZED: TockStatic<Cell<bool>> = TockStatic::new(Cell::new(false));
-static CLOCK: TockStatic<Clock<FutureForwarder>> = TockStatic::new(Clock::new(FutureForwarder));
-
 #[derive(Clone, Copy)]
-struct FutureForwarder;
+pub struct FutureForwarder;
 
 impl crate::lw::async_util::Forwarder<AlarmFired> for FutureForwarder {
     fn invoke_callback(self, _: AlarmFired) {

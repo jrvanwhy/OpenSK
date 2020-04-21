@@ -191,7 +191,7 @@ pub fn recv_with_timeout(
     libtock::futures::executor::block_on(
         libtock::futures::combinator::WaitFirst::new(
             UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(timeout_delay)
+            libtock::futures::alarm::AlarmFuture::new(&*crate::CLOCK, timeout_delay)
         )
     );
 
@@ -271,7 +271,7 @@ pub fn send_or_recv_with_timeout(
     libtock::futures::executor::block_on(
         libtock::futures::combinator::WaitFirst::new(
             UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(timeout_delay)
+            libtock::futures::alarm::AlarmFuture::new(&*crate::CLOCK, timeout_delay)
         )
     );
 

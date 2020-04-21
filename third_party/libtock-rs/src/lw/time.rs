@@ -36,6 +36,12 @@ pub struct Clock<F: Forwarder<AlarmFired>> {
     forwarder: F,
 }
 
+pub trait AlarmClock {
+    fn get_time(&self) -> u64;
+    fn get_alarm(&self) -> u64;
+    fn set_alarm(&self, time: u64) -> Result<(), InPast>;
+}
+
 impl<F: Forwarder<AlarmFired>> Clock<F> {
     pub const fn new(forwarder: F) -> Clock<F> {
         Clock {
@@ -57,8 +63,10 @@ impl<F: Forwarder<AlarmFired>> Clock<F> {
         let callback_ticks = (self.last_callback.get() as u32).wrapping_add(UPDATE_PERIOD);
         unsafe { command(DRIVER_NUM, SET_ALARM, callback_ticks as usize, 0) };
     }
+}
 
-    pub fn get_time(&self) -> u64 {
+impl<F: Forwarder<AlarmFired>> AlarmClock for Clock<F> {
+    fn get_time(&self) -> u64 {
         calc_new_unwrapped(
             self.last_callback.get(),
             unsafe { command(DRIVER_NUM, GET_TICKS, 0, 0) } as u32,
@@ -66,11 +74,11 @@ impl<F: Forwarder<AlarmFired>> Clock<F> {
     }
 
     // Returns u64::max_value() if no alarm is set.
-    pub fn get_alarm(&self) -> u64 {
+    fn get_alarm(&self) -> u64 {
         self.client_setpoint.get()
     }
 
-    pub fn set_alarm(&self, time: u64) -> Result<(), InPast> {
+    fn set_alarm(&self, time: u64) -> Result<(), InPast> {
         self.client_setpoint.set(time);
         if time >= self.last_callback.get() + UPDATE_PERIOD as u64 {
             return Ok(());
