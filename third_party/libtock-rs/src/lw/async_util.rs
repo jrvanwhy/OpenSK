@@ -2,7 +2,6 @@
 //! prototype.
 
 use core::cell::{Cell, UnsafeCell};
-use core::num::NonZeroUsize;
 
 /// A trait implemented by clients of asynchronous components. Has a callback
 /// that receives a value of type T.
@@ -16,7 +15,7 @@ pub trait Client<T> {
 /// callback pointer, and is therefore 4 words in size. DynClient contains to
 /// words: the data pointer and the callback pointer.
 pub struct DynClient<'a, T> {
-    data: NonZeroUsize,
+    data: *const (),
 
     // Because we don't know the real type of client, we have to erase the type
     // of the data pointer. As far as I can tell, Rust does not *guarantee* that
@@ -24,15 +23,15 @@ pub struct DynClient<'a, T> {
     // the T is the same in both cases. Instead, we point to a shim that has a
     // fixed ABI regardless of the underlying client, and hope that shim
     // optimizes away.
-    callback: unsafe fn(NonZeroUsize, T),
+    callback: unsafe fn(*const (), T),
 
     _phantom: core::marker::PhantomData<&'a dyn Client<T>>,
 }
 
 impl<'a, T> DynClient<'a, T> {
-    pub fn new<C: Client<T>>(client: &'a C) -> DynClient<'a, T> {
+    pub const fn new<C: Client<T>>(client: &'a C) -> DynClient<'a, T> {
         DynClient {
-            data: unsafe { NonZeroUsize::new_unchecked(client as *const C as usize) },
+            data: client as *const C as *const (),
             callback: erased_call::<T, C>,
             _phantom: core::marker::PhantomData,
         }
@@ -43,8 +42,8 @@ impl<'a, T> DynClient<'a, T> {
     }
 }
 
-unsafe fn erased_call<T, C: Client<T>>(data: NonZeroUsize, response: T) {
-    C::callback(&*(data.get() as *const C), response)
+unsafe fn erased_call<T, C: Client<T>>(data: *const (), response: T) {
+    C::callback(&*(data as *const C), response)
 }
 
 /// A trait for "forwarders", which are type system shims that route callbacks
@@ -119,5 +118,51 @@ impl<T> core::ops::Deref for TockStatic<T> {
 
     fn deref(&self) -> &T {
         &self.value
+    }
+}
+
+// ClientList is essentially &[&dyn Client<T>], but zero-sized (to remove
+// runtime overhead).
+pub unsafe trait List<T> {
+    const LEN: usize;
+    fn get(&self) -> &'static [DynClient<'static, T>];
+}
+
+pub struct EmptyList<T> { _phantom: core::marker::PhantomData<T> }
+
+impl<T> EmptyList<T> {
+    pub const fn new() -> EmptyList<T> {
+        EmptyList { _phantom: core::marker::PhantomData }
+    }
+}
+
+unsafe impl<T> List<T> for EmptyList<T> {
+    const LEN: usize = 0;
+
+    fn get(&self) -> &'static [DynClient<'static, T>] {
+        &[]
+    }
+}
+
+#[repr(C)]
+pub struct ClientList<T: 'static, L: List<T>> {
+    dyn_client: DynClient<'static, T>,
+    rest: L,
+}
+
+impl<T: 'static, L: List<T>> ClientList<T, L> {
+    pub const fn new<C: Client<T>>(client: &'static C, rest: L) -> ClientList<T, L> {
+        ClientList { dyn_client: DynClient::new(client), rest }
+    }
+}
+
+unsafe impl<T: 'static, L: List<T>> List<T> for ClientList<T, L> {
+    const LEN: usize = L::LEN + 1;
+
+    fn get(&self) -> &'static [DynClient<'static, T>] {
+        use core::slice::from_raw_parts;
+        unsafe {
+            from_raw_parts(self as *const Self as *const DynClient<T>, L::LEN + 1)
+        }
     }
 }

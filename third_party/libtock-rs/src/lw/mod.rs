@@ -7,6 +7,7 @@ pub mod led;
 pub mod returncode;
 pub mod rng;
 pub mod time;
+pub mod virt_time;
 
 // TODO: Figure out a way to initialize drivers that want or need runtime
 // initialization (e.g. calling subscribe() to set up static callbacks). We may
