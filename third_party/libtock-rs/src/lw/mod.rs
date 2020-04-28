@@ -6,6 +6,7 @@ pub mod dyncall;
 pub mod led;
 pub mod returncode;
 pub mod rng;
+pub mod sync_cell;
 pub mod time;
 pub mod virt_time;
 
