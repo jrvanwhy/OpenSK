@@ -245,19 +245,6 @@ impl libtock::lw::async_util::Client<libtock::lw::time::AlarmFired> for UsbWaite
     }
 }
 
-struct UsbFuture<'l> {
-    status: &'l Cell<Option<SendOrRecvStatus>>,
-}
-impl<'l> core::future::Future for UsbFuture<'l> {
-    type Output = ();
-    fn poll(self: core::pin::Pin<&mut Self>, _cx: &mut core::task::Context) -> core::task::Poll<()> {
-        match self.status.get() {
-            None => core::task::Poll::Pending,
-            Some(_) => core::task::Poll::Ready(()),
-        }
-    }
-}
-
 // Same as send_or_recv, but with a timeout.
 // If the timeout elapses, return None.
 pub fn send_or_recv_with_timeout(
@@ -292,17 +279,7 @@ pub fn send_or_recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
-    static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
-        libtock::futures::alarm::AlarmClockClient;
-    static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
-        libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
-
-    libtock::futures::executor::block_on(
-        libtock::futures::combinator::WaitFirst::new(
-            UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, timeout_delay)
-        )
-    );
+    status.set(USB_WAITER.wait(timeout_delay));
 
     // Cancel USB transaction if necessary.
     if status.get().is_none() {

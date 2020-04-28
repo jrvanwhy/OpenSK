@@ -52,10 +52,10 @@ impl AlarmClock for MuxClient {
     }
 }
 
-static CLOCK: TockStatic<Clock<MuxForwarder>> = TockStatic::new(Clock::new(MuxForwarder));
+pub static CLOCK: TockStatic<Clock<MuxForwarder>> = TockStatic::new(Clock::new(MuxForwarder));
 
 #[derive(Clone, Copy)]
-struct MuxForwarder;
+pub struct MuxForwarder;
 
 impl Forwarder<AlarmFired> for MuxForwarder {
     fn invoke_callback(self, _response: AlarmFired) {

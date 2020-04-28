@@ -45,8 +45,6 @@ const KEEPALIVE_DELAY: u64 = 1000;
 const SEND_TIMEOUT: u64 = 1000;
 
 use libtock::lw::time::AlarmClock;
-use libtock::lw::virt_time;
-use libtock::futures::alarm;
 
 fn main() {
     // Setup USB driver.
@@ -59,9 +57,7 @@ fn main() {
     let mut ctap_hid = CtapHid::new();
 
     let mut led_counter = 0;
-    static MUX_CLIENT: alarm::AlarmClockClient = alarm::AlarmClockClient;
-    static MUX_CLOCK: virt_time::MuxClient = virt_time::MuxClient::new(&MUX_CLIENT);
-    let mut last_led_increment = MUX_CLOCK.get_time();
+    let mut last_led_increment = libtock::lw::virt_time::CLOCK.get_time();
 
     // Main loop. If CTAP1 is used, we register button presses for U2F while receiving and waiting.
     // The way TockOS and apps currently interact, callbacks need a yield syscall to execute,
@@ -76,7 +72,7 @@ fn main() {
             None => false,
         };
 
-        let now = MUX_CLOCK.get_time();
+        let now = libtock::lw::virt_time::CLOCK.get_time();
         #[cfg(feature = "with_ctap1")]
         {
             if libtock::futures::button::get_state(0).unwrap() {
@@ -110,7 +106,7 @@ fn main() {
             }
         }
 
-        let now = MUX_CLOCK.get_time();
+        let now = libtock::lw::virt_time::CLOCK.get_time();
         let wait_duration = now.wrapping_sub(last_led_increment);
         if wait_duration > KEEPALIVE_DELAY {
             // Loops quickly when waiting for U2F user presence, so the next LED blink
