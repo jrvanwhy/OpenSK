@@ -188,17 +188,7 @@ pub fn recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
-    static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
-        libtock::futures::alarm::AlarmClockClient;
-    static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
-        libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
-
-    libtock::futures::executor::block_on(
-        libtock::futures::combinator::WaitFirst::new(
-            UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, timeout_delay)
-        )
-    );
+    status.set(USB_WAITER.wait(timeout_delay));
 
     // Cancel USB transaction if necessary.
     if status.get().is_none() {
@@ -224,6 +214,35 @@ pub fn recv_with_timeout(
     }
 
     status.get()
+}
+
+static USB_MUX_CLOCK: libtock::lw::virt_time::MuxClient =
+    libtock::lw::virt_time::MuxClient::new(&USB_WAITER);
+
+static USB_WAITER: UsbWaiter = UsbWaiter {
+    status: libtock::lw::sync_cell::SyncCell::new(None),
+    timeout: libtock::lw::sync_cell::SyncCell::new(false),
+};
+
+struct UsbWaiter {
+    status: libtock::lw::sync_cell::SyncCell<Option<SendOrRecvStatus>>,
+    timeout: libtock::lw::sync_cell::SyncCell<bool>,
+}
+
+impl UsbWaiter {
+    fn wait(&self, timeout_delay: u64) -> Option<SendOrRecvStatus> {
+        use libtock::lw::time::AlarmClock;
+        let _ = USB_MUX_CLOCK.set_alarm(USB_MUX_CLOCK.get_time() + timeout_delay);
+        libtock::syscalls::yieldk_for(|| self.status.get().is_some() || self.timeout.get());
+        self.timeout.set(false);
+        self.status.take()
+    }
+}
+
+impl libtock::lw::async_util::Client<libtock::lw::time::AlarmFired> for UsbWaiter {
+    fn callback(&self, _response: libtock::lw::time::AlarmFired) {
+        self.timeout.set(true);
+    }
 }
 
 struct UsbFuture<'l> {
