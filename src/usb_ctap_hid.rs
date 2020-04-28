@@ -188,10 +188,15 @@ pub fn recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
+    static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
+        libtock::futures::alarm::AlarmClockClient;
+    static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
+        libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
+
     libtock::futures::executor::block_on(
         libtock::futures::combinator::WaitFirst::new(
             UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(&*crate::CLOCK, timeout_delay)
+            libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, timeout_delay)
         )
     );
 
@@ -268,10 +273,15 @@ pub fn send_or_recv_with_timeout(
         return Some(SendOrRecvStatus::Error);
     }
 
+    static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
+        libtock::futures::alarm::AlarmClockClient;
+    static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
+        libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
+
     libtock::futures::executor::block_on(
         libtock::futures::combinator::WaitFirst::new(
             UsbFuture { status: &status },
-            libtock::futures::alarm::AlarmFuture::new(&*crate::CLOCK, timeout_delay)
+            libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, timeout_delay)
         )
     );
 

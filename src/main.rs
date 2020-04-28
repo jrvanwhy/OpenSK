@@ -44,9 +44,9 @@ use libtock::lw::led;
 const KEEPALIVE_DELAY: u64 = 1000;
 const SEND_TIMEOUT: u64 = 1000;
 
-use libtock::lw::time::{AlarmClock, Clock};
-static CLOCK: libtock::lw::async_util::TockStatic<Clock<libtock::futures::alarm::FutureForwarder>> =
-    libtock::lw::async_util::TockStatic::new(Clock::new(libtock::futures::alarm::FutureForwarder));
+use libtock::lw::time::AlarmClock;
+use libtock::lw::virt_time;
+use libtock::futures::alarm;
 
 fn main() {
     // Setup USB driver.
@@ -59,7 +59,9 @@ fn main() {
     let mut ctap_hid = CtapHid::new();
 
     let mut led_counter = 0;
-    let mut last_led_increment = CLOCK.get_time();
+    static MUX_CLIENT: alarm::AlarmClockClient = alarm::AlarmClockClient;
+    static MUX_CLOCK: virt_time::MuxClient = virt_time::MuxClient::new(&MUX_CLIENT);
+    let mut last_led_increment = MUX_CLOCK.get_time();
 
     // Main loop. If CTAP1 is used, we register button presses for U2F while receiving and waiting.
     // The way TockOS and apps currently interact, callbacks need a yield syscall to execute,
@@ -74,7 +76,7 @@ fn main() {
             None => false,
         };
 
-        let now = CLOCK.get_time();
+        let now = MUX_CLOCK.get_time();
         #[cfg(feature = "with_ctap1")]
         {
             if libtock::futures::button::get_state(0).unwrap() {
@@ -108,7 +110,7 @@ fn main() {
             }
         }
 
-        let now = CLOCK.get_time();
+        let now = MUX_CLOCK.get_time();
         let wait_duration = now.wrapping_sub(last_led_increment);
         if wait_duration > KEEPALIVE_DELAY {
             // Loops quickly when waiting for U2F user presence, so the next LED blink
@@ -280,12 +282,17 @@ fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
     for i in 0..TIMEOUT_ITERATIONS {
         blink_leds(i);
 
+        static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
+            libtock::futures::alarm::AlarmClockClient;
+        static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
+            libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
+
         // Wait for a button touch or an alarm.
         static BUTTON: libtock::futures::button::Button = libtock::futures::button::Button::new();
         libtock::futures::executor::block_on(
             libtock::futures::combinator::WaitFirst::new(
                 libtock::futures::button::ButtonFuture::new(&BUTTON, 0, true).unwrap(),
-                libtock::futures::alarm::AlarmFuture::new(&*CLOCK, 1000),
+                libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, 1000),
             )
         );
 

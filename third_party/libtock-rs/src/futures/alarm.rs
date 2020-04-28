@@ -4,6 +4,12 @@
 use core::task::{Context, Poll};
 use crate::lw::time::{AlarmClock, AlarmFired};
 
+pub struct AlarmClockClient;
+
+impl crate::lw::async_util::Client<AlarmFired> for AlarmClockClient {
+    fn callback(&self, _response: AlarmFired) {}
+}
+
 pub struct AlarmFuture<C: AlarmClock + 'static> {
     clock: &'static C,
     setpoint: u64,

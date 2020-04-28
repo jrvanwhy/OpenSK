@@ -1,4 +1,4 @@
-use crate::lw::async_util::{DynClient, Forwarder, TockStatic};
+use crate::lw::async_util::{Client, DynClient, Forwarder, TockStatic};
 use crate::lw::sync_cell::SyncCell;
 use crate::lw::time::{AlarmClock, AlarmFired, Clock, InPast};
 
@@ -14,6 +14,42 @@ pub struct MuxClient {
     dyn_client: TockStatic<DynClient<'static, AlarmFired>>,
     next: SyncCell<Option<&'static MuxClient>>,
     setpoint: SyncCell<Option<u64>>,
+}
+
+impl MuxClient {
+    pub const fn new<C: Client<AlarmFired>>(client: &'static C) -> MuxClient {
+        MuxClient {
+            dyn_client: TockStatic::new(DynClient::new(client)),
+            next: SyncCell::new(None),
+            setpoint: SyncCell::new(None),
+        }
+    }
+}
+
+impl AlarmClock for MuxClient {
+    fn get_time(&self) -> u64 {
+        CLOCK.get_time()
+    }
+
+    fn get_alarm(&self) -> u64 {
+        self.setpoint.get().unwrap_or(u64::max_value())
+    }
+
+    fn set_alarm(&self, time: u64) -> Result<(), InPast> {
+        if CLOCK.get_alarm() > time {
+            // TODO: Implementing this correctly requires a deferred call
+            // mechanism. If CLOCK.set_alarm returns Err(InPast), we not only
+            // need to return InPast, we may also need to run callbacks and we
+            // need to reset the existing alarm in CLOCK.
+
+            // TODO: Perhaps it should've been a deferred-call-based mechanism
+            // from the start? Maybe the APIs shouldn't be the same?
+            return CLOCK.set_alarm(time);
+        }
+
+        self.setpoint.set(Some(time));
+        Ok(())
+    }
 }
 
 static CLOCK: TockStatic<Clock<MuxForwarder>> = TockStatic::new(Clock::new(MuxForwarder));
@@ -48,31 +84,5 @@ impl Forwarder<AlarmFired> for MuxForwarder {
                 return;
             }
         }
-    }
-}
-
-impl AlarmClock for MuxClient {
-    fn get_time(&self) -> u64 {
-        CLOCK.get_time()
-    }
-
-    fn get_alarm(&self) -> u64 {
-        self.setpoint.get().unwrap_or(u64::max_value())
-    }
-
-    fn set_alarm(&self, time: u64) -> Result<(), InPast> {
-        if CLOCK.get_alarm() > time {
-            // TODO: Implementing this correctly requires a deferred call
-            // mechanism. If CLOCK.set_alarm returns Err(InPast), we not only
-            // need to return InPast, we may also need to run callbacks and we
-            // need to reset the existing alarm in CLOCK.
-
-            // TODO: Perhaps it should've been a deferred-call-based mechanism
-            // from the start? Maybe the APIs shouldn't be the same?
-            return CLOCK.set_alarm(time);
-        }
-
-        self.setpoint.set(Some(time));
-        Ok(())
     }
 }
