@@ -2,6 +2,11 @@
 //! read the state of the buttons and to receive interrupts when the button
 //! state changes.
 
+// TODO: Drivers that expose a mix of a synchronous and an asynchronous API are
+// somewhat painful to use purely synchronously, because they still demand a
+// forwarder even if one is not necessary. The "generic arguments only on the
+// impl" approach probably handles this better.
+
 use crate::lw::async_util::Forwarder;
 use crate::returncode_subset;
 use crate::syscalls::{command, subscribe_ptr};

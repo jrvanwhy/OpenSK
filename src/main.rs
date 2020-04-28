@@ -46,6 +46,16 @@ const SEND_TIMEOUT: u64 = 1000;
 
 use libtock::lw::time::AlarmClock;
 
+#[derive(Clone, Copy)]
+struct ButtonForwarder;
+
+impl libtock::lw::async_util::Forwarder<libtock::lw::button::Event> for ButtonForwarder {
+    fn invoke_callback(self, _response: libtock::lw::button::Event) {}
+}
+
+static BUTTON_DRIVER: libtock::lw::button::Driver<ButtonForwarder> =
+    libtock::lw::button::Driver::new(ButtonForwarder);
+
 fn main() {
     // Setup USB driver.
     if !usb_ctap_hid::setup() {
@@ -75,7 +85,7 @@ fn main() {
         let now = libtock::lw::virt_time::CLOCK.get_time();
         #[cfg(feature = "with_ctap1")]
         {
-            if libtock::futures::button::get_state(0).unwrap() {
+            if BUTTON_DRIVER.get_state(0).unwrap() {
                 ctap_state.u2f_up_state.grant_up(now);
             }
         }
