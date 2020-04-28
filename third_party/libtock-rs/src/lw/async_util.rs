@@ -12,7 +12,7 @@ pub trait Client<T> {
 /// A lighter-weight version of &dyn Client<T>. &dyn references internally
 /// contain two pointers: the pointer to the object's data and a pointer to a
 /// vtable. The vtable contains the type's size, alignment, destructor, and
-/// callback pointer, and is therefore 4 words in size. DynClient contains to
+/// callback pointer, and is therefore 4 words in size. DynClient contains two
 /// words: the data pointer and the callback pointer.
 pub struct DynClient<'a, T> {
     data: *const (),
