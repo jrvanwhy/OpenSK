@@ -288,19 +288,20 @@ fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
     for i in 0..TIMEOUT_ITERATIONS {
         blink_leds(i);
 
-        static MUX_CLIENT: libtock::futures::alarm::AlarmClockClient =
-            libtock::futures::alarm::AlarmClockClient;
+        struct ClockClient { fired: libtock::lw::sync_cell::SyncCell<bool> }
+        impl libtock::lw::async_util::Client<libtock::lw::time::AlarmFired> for ClockClient {
+            fn callback(&self, _response: libtock::lw::time::AlarmFired) {
+                self.fired.set(true);
+            }
+        }
+        static MUX_CLIENT: ClockClient = ClockClient { fired: libtock::lw::sync_cell::SyncCell::new(false) };
         static MUX_CLOCK: libtock::lw::virt_time::MuxClient =
             libtock::lw::virt_time::MuxClient::new(&MUX_CLIENT);
 
         // Wait for a button touch or an alarm.
-        static BUTTON: libtock::futures::button::Button = libtock::futures::button::Button::new();
-        libtock::futures::executor::block_on(
-            libtock::futures::combinator::WaitFirst::new(
-                libtock::futures::button::ButtonFuture::new(&BUTTON, 0, true).unwrap(),
-                libtock::futures::alarm::AlarmFuture::new(&MUX_CLOCK, 1000),
-            )
-        );
+        MUX_CLIENT.fired.set(false);
+        let _ = MUX_CLOCK.set_alarm(MUX_CLOCK.get_time() + KEEPALIVE_DELAY);
+        libtock::syscalls::yieldk_for(|| BUTTON_DRIVER.get_state(0).unwrap_or(false) || MUX_CLIENT.fired.get());
 
         // TODO: this may take arbitrary time. The keepalive_delay should be adjusted accordingly,
         // so that LEDs blink with a consistent pattern.
