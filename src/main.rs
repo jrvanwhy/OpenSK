@@ -305,12 +305,12 @@ fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
 
         // TODO: this may take arbitrary time. The keepalive_delay should be adjusted accordingly,
         // so that LEDs blink with a consistent pattern.
-        if !libtock::futures::button::get_state(0).unwrap() {
+        if !BUTTON_DRIVER.get_state(0).unwrap_or(false) {
             // Do not return immediately, because we must clean up still.
             keepalive_response = send_keepalive_up_needed(cid, KEEPALIVE_DELAY);
         }
 
-        if libtock::futures::button::get_state(0).unwrap() || keepalive_response.is_err() {
+        if BUTTON_DRIVER.get_state(0).unwrap_or(false) || keepalive_response.is_err() {
             break;
         }
     }
@@ -320,7 +320,7 @@ fn check_user_presence(cid: ChannelID) -> Result<(), Ctap2StatusCode> {
     // Returns whether the user was present.
     if keepalive_response.is_err() {
         keepalive_response
-    } else if libtock::futures::button::get_state(0).unwrap() {
+    } else if BUTTON_DRIVER.get_state(0).unwrap_or(false) {
         Ok(())
     } else {
         Err(Ctap2StatusCode::CTAP2_ERR_USER_ACTION_TIMEOUT)
